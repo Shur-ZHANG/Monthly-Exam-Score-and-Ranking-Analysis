@@ -24,5 +24,12 @@
 - pip 包管理工具
 
 ### 安装依赖
-```bash
-pip install streamlit pandas plotly openpyxl numpy
+bash
+-pip install streamlit pandas plotly openpyxl numpy
+
+-streamlit run main.py
+streamlit
+pandas
+plotly
+openpyxl
+numpy
