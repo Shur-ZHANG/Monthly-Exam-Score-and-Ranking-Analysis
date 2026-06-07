@@ -1,0 +1,939 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>学生月考成绩与位次趋势分析</title>
+    
+    <!-- 引入 Plotly.js 和 Papa Parse（CSV解析） -->
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <!-- SheetJS 用于读取 Excel -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+            background: #f5f6fa;
+            color: #333;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .sidebar {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+            margin-bottom: 20px;
+        }
+        .sidebar h3 {
+            margin-bottom: 15px;
+            color: #667eea;
+        }
+        .sidebar label {
+            display: block;
+            margin: 10px 0 5px;
+            font-weight: 600;
+            font-size: 0.95em;
+        }
+        .sidebar input[type="file"] {
+            width: 100%;
+            padding: 8px;
+            border: 2px dashed #ddd;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
+        .sidebar button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+            margin: 5px 5px 5px 0;
+            transition: all 0.3s;
+        }
+        .sidebar button:hover {
+            background: #5a6fd6;
+            transform: translateY(-1px);
+        }
+        .sidebar .note {
+            background: #fff3cd;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 0.85em;
+            margin-top: 15px;
+            color: #856404;
+        }
+        .main-content {
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            gap: 20px;
+        }
+        .controls {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+            height: fit-content;
+        }
+        .controls select, .controls .multiselect {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1em;
+            margin-bottom: 15px;
+            transition: border-color 0.3s;
+        }
+        .controls select:focus {
+            border-color: #667eea;
+            outline: none;
+        }
+        .checkbox-group {
+            max-height: 250px;
+            overflow-y: auto;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 12px;
+        }
+        .checkbox-group label {
+            display: block;
+            padding: 5px 0;
+            cursor: pointer;
+        }
+        .checkbox-group input[type="checkbox"] {
+            margin-right: 8px;
+        }
+        .charts-area {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .chart-card {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+        }
+        .chart-card h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .metric-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        .metric-card .metric-value {
+            font-size: 2em;
+            font-weight: bold;
+        }
+        .metric-card .metric-label {
+            font-size: 0.9em;
+            opacity: 0.9;
+            margin-top: 5px;
+        }
+        .metric-card .metric-delta {
+            font-size: 0.85em;
+            margin-top: 5px;
+            font-weight: 600;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            font-size: 0.9em;
+        }
+        th {
+            background: #f8f9fa;
+            padding: 12px;
+            text-align: center;
+            border-bottom: 2px solid #dee2e6;
+            font-weight: 600;
+        }
+        td {
+            padding: 10px;
+            text-align: center;
+            border-bottom: 1px solid #eee;
+        }
+        tr:hover {
+            background: #f8f9fa;
+        }
+        .success-msg {
+            background: #d4edda;
+            color: #155724;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        .error-msg {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        .expandable {
+            cursor: pointer;
+            color: #667eea;
+            font-weight: 600;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin: 10px 0;
+            user-select: none;
+        }
+        .expandable:hover {
+            background: #e9ecef;
+        }
+        .collapsible-content {
+            display: none;
+            padding: 15px;
+            border: 1px solid #eee;
+            border-radius: 8px;
+            margin-top: 5px;
+        }
+        .collapsible-content.active {
+            display: block;
+        }
+
+        /* ============ 图表+说明左右布局 ============ */
+        .chart-with-guide {
+            display: grid;
+            grid-template-columns: 1fr 260px;
+            gap: 20px;
+            align-items: start;
+        }
+        .chart-main {
+            min-width: 0;
+        }
+        .chart-guide {
+            background: #f0f4ff;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 0.85em;
+            color: #333;
+            line-height: 1.7;
+        }
+        .chart-guide strong {
+            color: #667eea;
+        }
+        .chart-guide .warning-tip {
+            color: #856404;
+            background: #fff8e1;
+            padding: 8px;
+            border-radius: 6px;
+            margin-top: 8px;
+            font-size: 0.9em;
+        }
+
+        @media (max-width: 1000px) {
+            .chart-with-guide {
+                grid-template-columns: 1fr;
+            }
+        }
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+            .metrics {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📊 学生月考成绩与年级位次趋势分析</h1>
+        <p>支持各学科的成绩及年级总排名变化趋势可视化 | 上传 Excel/CSV 或使用示例数据开始分析</p>
+    </div>
+
+    <div class="container">
+        <!-- ==================== 侧边栏 ==================== -->
+        <div class="sidebar">
+            <h3>📁 数据导入</h3>
+            <label>上传成绩数据 (.csv / .xlsx)</label>
+            <input type="file" id="fileInput" accept=".csv,.xls,.xlsx">
+            <button onclick="loadSampleData()">📥 使用示例数据</button>
+            <button onclick="downloadSampleCSV()">⬇️ 下载示例CSV</button>
+            <div class="note" id="dataInfo">
+                📌 请上传文件或使用示例数据开始分析<br>
+                列名需包含：学生姓名、考试日期、各科成绩、年级排名
+            </div>
+        </div>
+
+        <!-- 数据预览 -->
+        <div class="chart-card" id="previewSection" style="display:none;">
+            <div class="expandable" onclick="toggleCollapse('previewTable')">📋 数据预览（点击展开）</div>
+            <div id="previewTable" class="collapsible-content">
+                <div id="previewContent"></div>
+            </div>
+        </div>
+
+        <!-- 主内容区 -->
+        <div class="main-content" id="mainContent" style="display:none;">
+            <!-- 左侧控件 -->
+            <div class="controls">
+                <h3>👩‍🎓 选择学生</h3>
+                <select id="studentSelect"></select>
+                
+                <h3>📚 选择科目</h3>
+                <div class="checkbox-group" id="subjectCheckboxes"></div>
+                
+                <button onclick="updateAll()" style="width:100%;margin-top:15px;">🔄 刷新图表</button>
+            </div>
+
+            <!-- 右侧图表区 -->
+            <div class="charts-area">
+                <!-- 指标卡片 -->
+                <div class="metrics" id="metricsContainer"></div>
+
+                <!-- 成绩趋势图 + 说明 -->
+                <div class="chart-card">
+                    <h3>📈 各科成绩变化趋势</h3>
+                    <div class="chart-with-guide">
+                        <div class="chart-main">
+                            <div id="scoreChart"></div>
+                        </div>
+                        <div class="chart-guide">
+                            <strong>📖 怎么看这个图？</strong><br><br>
+                            • <strong>横轴</strong> = 考试时间<br>
+                            • <strong>纵轴</strong> = 分数<br>
+                            • <strong>每条彩色线</strong> = 一门科目<br><br>
+                            <span style="color:green;">▲ 线条上升</span> = 成绩进步<br>
+                            <span style="color:red;">▼ 线条下降</span> = 成绩退步<br><br>
+                            💡 点击右侧图例可隐藏/显示某科，方便对比特定科目。
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 排名趋势图 + 说明 -->
+                <div class="chart-card">
+                    <h3>🎯 年级总排名变化趋势</h3>
+                    <div class="chart-with-guide">
+                        <div class="chart-main">
+                            <div id="rankChart"></div>
+                        </div>
+                        <div class="chart-guide">
+                            <strong>📖 怎么看这个图？</strong><br><br>
+                            • <strong>纵轴已反转</strong><br>
+                            • 排名1在最上方（最好）<br>
+                            • 排名数字越大越靠下<br><br>
+                            <span style="color:green;">▲ 绿色↑箭头</span> = 进步了多少名<br>
+                            <span style="color:red;">▼ 红色↓箭头</span> = 退步了多少名<br><br>
+                            <div class="warning-tip">
+                                ⚠️ 线向上走 = 排名变好<br>
+                                ⚠️ 线向下走 = 排名变差
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 详细成绩表 -->
+                <div class="chart-card">
+                    <div class="expandable" onclick="toggleCollapse('detailTable')">📋 详细月考记录（点击展开）</div>
+                    <div id="detailTable" class="collapsible-content">
+                        <div id="detailContent"></div>
+                    </div>
+                </div>
+
+                <!-- 班级整体趋势 -->
+                <div class="chart-card">
+                    <div class="expandable" onclick="toggleCollapse('classCharts')">📊 班级整体趋势（点击展开）</div>
+                    <div id="classCharts" class="collapsible-content">
+                        <!-- 班级平均分 + 说明 -->
+                        <h4 style="margin-top:10px;">班级各科平均分趋势</h4>
+                        <div class="chart-with-guide">
+                            <div class="chart-main">
+                                <div id="avgChart"></div>
+                            </div>
+                            <div class="chart-guide">
+                                <strong>📖 怎么看这个图？</strong><br><br>
+                                • <strong>展示全班各科平均分</strong><br>
+                                • 可与个人成绩图对比<br><br>
+                                如果个人某科线<span style="color:green;"><strong>高于</strong></span>班级平均线 → 该科<span style="color:green;"><strong>领先</strong></span><br>
+                                如果个人某科线<span style="color:red;"><strong>低于</strong></span>班级平均线 → 该科<span style="color:red;"><strong>需加强</strong></span>
+                            </div>
+                        </div>
+                        
+                        <!-- 排名箱线图 + 说明 -->
+                        <h4 style="margin-top:15px;">年级排名分布（箱线图）</h4>
+                        <div class="chart-with-guide">
+                            <div class="chart-main">
+                                <div id="boxChart"></div>
+                            </div>
+                            <div class="chart-guide">
+                                <strong>📖 怎么看这个图？</strong><br><br>
+                                • <strong>每个箱子</strong> = 一次考试<br>
+                                • <strong>中间横线</strong> = 中位数（中等水平）<br>
+                                • <strong>箱子上下边</strong> = 中间50%学生的排名范围<br>
+                                • <strong>延伸线</strong> = 最高/最低排名<br><br>
+                                <strong>箱子越短</strong> → 竞争越激烈<br>
+                                <strong>箱子越长</strong> → 两极分化
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 底部常见误区 -->
+                <div class="chart-card" style="background: #fff8f8;">
+                    <div style="display:flex;align-items:flex-start;gap:12px;">
+                        <span style="font-size:1.5em;">⚠️</span>
+                        <div style="color:#721c24;font-size:0.9em;line-height:1.8;">
+                            <strong>常见误区：</strong><br>
+                            ① 排名<strong>1</strong>是最好的，排名数字<strong>越大越靠后</strong><br>
+                            ② 单科分数高 ≠ 总排名高（总排名看总分）<br>
+                            ③ 偶尔一次退步不代表学习出问题，建议关注<strong>长期趋势</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============ 全局变量 ============
+        let fullData = [];           // 存储所有数据
+        let allStudents = [];       // 学生列表
+        let allSubjects = ["数学", "语文", "英语", "道法", "地理", "生物", "历史"];
+        let availableSubjects = []; // 数据中实际存在的科目
+
+        // ============ 工具函数 ============
+        function toggleCollapse(id) {
+            const el = document.getElementById(id);
+            el.classList.toggle('active');
+        }
+
+        // 生成随机数（min到max之间）
+        function randomBetween(min, max) {
+            return Math.random() * (max - min) + min;
+        }
+
+        // 限制数值范围
+        function clamp(value, min, max) {
+            return Math.max(min, Math.min(max, value));
+        }
+
+        // 日期格式化
+        function formatDate(dateStr) {
+            const d = new Date(dateStr);
+            return d.toISOString().split('T')[0];
+        }
+
+        // ============ 示例数据生成 ============
+        function generateSampleData() {
+            const students = ["张三", "李四", "王芳", "赵磊", "陈雨桐", "周明"];
+            const examDates = ["2025-03-01", "2025-04-01", "2025-05-01", "2025-06-01"];
+            const subjects = allSubjects;
+
+            // 为每个学生设定基础能力
+            const ability = {};
+            students.forEach(student => {
+                ability[student] = {};
+                subjects.forEach(subj => {
+                    ability[student][subj] = randomBetween(65, 92);
+                });
+            });
+
+            // 进步因子
+            const trendFactor = {};
+            students.forEach(student => {
+                trendFactor[student] = randomBetween(-1.5, 3.0);
+            });
+
+            const records = [];
+
+            examDates.forEach((examDate, examIdx) => {
+                const studentScores = {};
+
+                students.forEach(student => {
+                    const scores = {};
+                    subjects.forEach(subj => {
+                        const base = ability[student][subj];
+                        const variation = trendFactor[student] * (examIdx + 1) * 0.6 + randomBetween(-5, 6);
+                        let score = base + variation;
+                        score = clamp(score, 45, 100);
+                        scores[subj] = Math.round(score * 10) / 10;
+                    });
+                    studentScores[student] = scores;
+                });
+
+                // 计算总分并排名
+                const totalScores = students.map(student => {
+                    const total = subjects.reduce((sum, subj) => sum + studentScores[student][subj], 0);
+                    return { student, total };
+                });
+                totalScores.sort((a, b) => b.total - a.total);
+
+                const ranking = {};
+                totalScores.forEach((item, idx) => {
+                    ranking[item.student] = idx + 1;
+                });
+
+                // 生成记录
+                students.forEach(student => {
+                    const record = {
+                        "学生姓名": student,
+                        "考试日期": examDate,
+                        ...studentScores[student],
+                        "年级排名": ranking[student]
+                    };
+                    records.push(record);
+                });
+            });
+
+            return records;
+        }
+
+        // ============ 数据加载 ============
+        function loadSampleData() {
+            fullData = generateSampleData();
+            processData();
+            document.getElementById('dataInfo').innerHTML = 
+                '<span style="color:green;">✅ 示例数据加载成功！</span>';
+        }
+
+        // 解析 CSV
+        function parseCSV(text) {
+            const result = Papa.parse(text, {
+                header: true,
+                skipEmptyLines: true,
+                encoding: 'utf-8'
+            });
+            return result.data;
+        }
+
+        // 读取 Excel 文件
+        function readExcel(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                        const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+                        resolve(jsonData);
+                    } catch (err) {
+                        reject(err);
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        // 文件上传处理
+        document.getElementById('fileInput').addEventListener('change', async function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const fileName = file.name.toLowerCase();
+            
+            try {
+                if (fileName.endsWith('.csv')) {
+                    const text = await file.text();
+                    fullData = parseCSV(text);
+                } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+                    fullData = await readExcel(file);
+                } else {
+                    alert('不支持的文件格式，请上传 CSV 或 Excel 文件');
+                    return;
+                }
+
+                // 检查必要列
+                const requiredCols = ["学生姓名", "考试日期", "年级排名"];
+                const cols = Object.keys(fullData[0] || {});
+                const missingCols = requiredCols.filter(col => !cols.includes(col));
+                
+                if (missingCols.length > 0) {
+                    alert(`缺少必要列：${missingCols.join(', ')}`);
+                    return;
+                }
+
+                // 确保数值类型正确
+                fullData.forEach(row => {
+                    allSubjects.forEach(subj => {
+                        if (row[subj] !== undefined) {
+                            row[subj] = parseFloat(row[subj]) || 0;
+                        }
+                    });
+                    row["年级排名"] = parseInt(row["年级排名"]) || 0;
+                });
+
+                processData();
+                document.getElementById('dataInfo').innerHTML = 
+                    '<span style="color:green;">✅ 文件上传成功！</span>';
+
+            } catch (err) {
+                alert('读取文件失败：' + err.message);
+            }
+        });
+
+        // 处理数据
+        function processData() {
+            // 提取学生列表
+            allStudents = [...new Set(fullData.map(r => r["学生姓名"]))].sort();
+            
+            // 检查哪些科目存在
+            availableSubjects = allSubjects.filter(subj => {
+                return fullData.some(row => row[subj] !== undefined && row[subj] !== '');
+            });
+
+            // 显示主内容区
+            document.getElementById('mainContent').style.display = '';
+            document.getElementById('previewSection').style.display = '';
+
+            // 填充学生下拉框
+            const select = document.getElementById('studentSelect');
+            select.innerHTML = allStudents.map(s => `<option value="${s}">${s}</option>`).join('');
+
+            // 填充科目复选框
+            const checkboxGroup = document.getElementById('subjectCheckboxes');
+            checkboxGroup.innerHTML = availableSubjects.map(subj => 
+                `<label><input type="checkbox" value="${subj}" checked> ${subj}</label>`
+            ).join('');
+
+            // 显示数据预览
+            showPreview();
+
+            // 更新图表
+            updateAll();
+        }
+
+        // 显示数据预览
+        function showPreview() {
+            const previewData = fullData.slice(0, 20);
+            const columns = ["学生姓名", "考试日期", ...availableSubjects, "年级排名"];
+            
+            let html = '<table><thead><tr>';
+            columns.forEach(col => {
+                if (fullData[0] && fullData[0][col] !== undefined) {
+                    html += `<th>${col}</th>`;
+                }
+            });
+            html += '</tr></thead><tbody>';
+
+            previewData.forEach(row => {
+                html += '<tr>';
+                columns.forEach(col => {
+                    if (fullData[0] && fullData[0][col] !== undefined) {
+                        const val = row[col];
+                        html += `<td>${val !== undefined ? val : ''}</td>`;
+                    }
+                });
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+
+            document.getElementById('previewContent').innerHTML = html;
+        }
+
+        // ============ 获取选中学生的数据 ============
+        function getStudentData() {
+            const student = document.getElementById('studentSelect').value;
+            const data = fullData
+                .filter(r => r["学生姓名"] === student)
+                .sort((a, b) => new Date(a["考试日期"]) - new Date(b["考试日期"]));
+            return data;
+        }
+
+        // 获取选中的科目
+        function getSelectedSubjects() {
+            const checkboxes = document.querySelectorAll('#subjectCheckboxes input[type="checkbox"]');
+            return Array.from(checkboxes)
+                .filter(cb => cb.checked)
+                .map(cb => cb.value);
+        }
+
+        // ============ 图表绘制 ============
+        function drawScoreChart() {
+            const studentData = getStudentData();
+            const selectedSubjects = getSelectedSubjects();
+
+            if (studentData.length === 0 || selectedSubjects.length === 0) {
+                document.getElementById('scoreChart').innerHTML = '<p>暂无数据</p>';
+                return;
+            }
+
+            const dates = studentData.map(r => r["考试日期"]);
+            
+            const traces = selectedSubjects.map(subj => {
+                return {
+                    x: dates,
+                    y: studentData.map(r => r[subj]),
+                    name: subj,
+                    type: 'scatter',
+                    mode: 'lines+markers',
+                    line: { shape: 'linear' }
+                };
+            });
+
+            const layout = {
+                xaxis: { title: '考试日期' },
+                yaxis: { title: '成绩 (分)', range: [0, 100] },
+                hovermode: 'closest',
+                legend: { orientation: 'h', y: 1.1 },
+                margin: { t: 10 }
+            };
+
+            Plotly.newPlot('scoreChart', traces, layout, { responsive: true });
+        }
+
+        function drawRankChart() {
+            const studentData = getStudentData();
+            
+            if (studentData.length === 0) {
+                document.getElementById('rankChart').innerHTML = '<p>暂无数据</p>';
+                return;
+            }
+
+            const dates = studentData.map(r => r["考试日期"]);
+            const ranks = studentData.map(r => r["年级排名"]);
+
+            const trace = {
+                x: dates,
+                y: ranks,
+                type: 'scatter',
+                mode: 'lines+markers',
+                line: { shape: 'linear' },
+                name: '年级排名'
+            };
+
+            // 计算进退步标注
+            const annotations = [];
+            for (let i = 1; i < ranks.length; i++) {
+                const diff = ranks[i-1] - ranks[i];
+                if (diff > 0) {
+                    annotations.push({
+                        x: dates[i],
+                        y: ranks[i],
+                        text: `↑ 进步${diff}名`,
+                        showarrow: true,
+                        arrowhead: 2,
+                        arrowcolor: 'green',
+                        font: { color: 'green', size: 11 },
+                        ay: -30
+                    });
+                } else if (diff < 0) {
+                    annotations.push({
+                        x: dates[i],
+                        y: ranks[i],
+                        text: `↓ 退步${-diff}名`,
+                        showarrow: true,
+                        arrowhead: 2,
+                        arrowcolor: 'red',
+                        font: { color: 'red', size: 11 },
+                        ay: 30
+                    });
+                }
+            }
+
+            const layout = {
+                title: '年级总排名变化趋势',
+                xaxis: { title: '考试日期' },
+                yaxis: { title: '年级排名 (数值越小越靠前)', autorange: 'reversed' },
+                annotations: annotations,
+                margin: { t: 10 }
+            };
+
+            Plotly.newPlot('rankChart', [trace], layout, { responsive: true });
+        }
+
+        function drawClassAvgChart() {
+            // 按考试日期分组计算平均分
+            const examGroups = {};
+            fullData.forEach(row => {
+                const date = row["考试日期"];
+                if (!examGroups[date]) {
+                    examGroups[date] = { count: 0, sums: {} };
+                    availableSubjects.forEach(subj => {
+                        examGroups[date].sums[subj] = 0;
+                    });
+                }
+                examGroups[date].count++;
+                availableSubjects.forEach(subj => {
+                    examGroups[date].sums[subj] += (parseFloat(row[subj]) || 0);
+                });
+            });
+
+            const dates = Object.keys(examGroups).sort();
+            const traces = availableSubjects.map(subj => {
+                return {
+                    x: dates,
+                    y: dates.map(d => examGroups[d].sums[subj] / examGroups[d].count),
+                    name: subj,
+                    type: 'scatter',
+                    mode: 'lines+markers'
+                };
+            });
+
+            const layout = {
+                title: '班级各科平均分趋势',
+                xaxis: { title: '考试日期' },
+                yaxis: { title: '平均分', range: [0, 100] },
+                hovermode: 'closest',
+                legend: { orientation: 'h', y: 1.1 }
+            };
+
+            Plotly.newPlot('avgChart', traces, layout, { responsive: true });
+        }
+
+        function drawBoxChart() {
+            const examDates = [...new Set(fullData.map(r => r["考试日期"]))].sort();
+            
+            const traces = examDates.map(date => {
+                const ranks = fullData
+                    .filter(r => r["考试日期"] === date)
+                    .map(r => r["年级排名"]);
+                return {
+                    y: ranks,
+                    name: date,
+                    type: 'box',
+                    boxmean: 'sd'
+                };
+            });
+
+            const layout = {
+                title: '各次月考年级排名分布（箱线图）',
+                xaxis: { title: '考试日期' },
+                yaxis: { title: '年级排名', autorange: 'reversed' }
+            };
+
+            Plotly.newPlot('boxChart', traces, layout, { responsive: true });
+        }
+
+        // ============ 指标卡片 ============
+        function updateMetrics() {
+            const studentData = getStudentData();
+            if (studentData.length === 0) return;
+
+            const examCount = studentData.length;
+            const latestRank = studentData[studentData.length - 1]["年级排名"];
+            const latestDate = formatDate(studentData[studentData.length - 1]["考试日期"]);
+            const firstRank = studentData[0]["年级排名"];
+            const rankChange = firstRank - latestRank;
+
+            const deltaText = rankChange > 0 ? `进步${rankChange}名 ▲` 
+                            : rankChange < 0 ? `退步${-rankChange}名 ▼` 
+                            : '持平';
+            const deltaColor = rankChange > 0 ? '#90EE90' : rankChange < 0 ? '#FFB6C1' : '#FFD700';
+
+            const container = document.getElementById('metricsContainer');
+            container.innerHTML = `
+                <div class="metric-card">
+                    <div class="metric-value">${examCount}</div>
+                    <div class="metric-label">参加月考次数</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${latestRank} 名</div>
+                    <div class="metric-label">最新排名 (${latestDate})</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">${firstRank} → ${latestRank}</div>
+                    <div class="metric-label">排名变化（首→末）</div>
+                    <div class="metric-delta" style="background:${deltaColor};padding:3px 10px;border-radius:15px;display:inline-block;margin-top:5px;">
+                        ${deltaText}
+                    </div>
+                </div>
+            `;
+        }
+
+        // ============ 详细成绩表 ============
+        function updateDetailTable() {
+            const studentData = getStudentData();
+            const columns = ["考试日期", ...availableSubjects, "年级排名"];
+            
+            let html = '<table><thead><tr>';
+            columns.forEach(col => html += `<th>${col}</th>`);
+            html += '</tr></thead><tbody>';
+
+            studentData.forEach(row => {
+                html += '<tr>';
+                columns.forEach(col => {
+                    const val = row[col];
+                    html += `<td>${col === '考试日期' ? formatDate(val) : (val !== undefined ? val : '')}</td>`;
+                });
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+
+            document.getElementById('detailContent').innerHTML = html;
+        }
+
+        // ============ 更新所有图表 ============
+        function updateAll() {
+            updateMetrics();
+            drawScoreChart();
+            drawRankChart();
+            updateDetailTable();
+            drawClassAvgChart();
+            drawBoxChart();
+        }
+
+        // ============ 下载示例 CSV ============
+        function downloadSampleCSV() {
+            const sampleData = generateSampleData();
+            const columns = ["学生姓名", "考试日期", ...allSubjects, "年级排名"];
+            
+            let csv = '\uFEFF'; // BOM 让 Excel 正确识别中文
+            csv += columns.join(',') + '\n';
+            
+            sampleData.forEach(row => {
+                const values = columns.map(col => row[col] !== undefined ? row[col] : '');
+                csv += values.join(',') + '\n';
+            });
+
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = '学生成绩示例数据.csv';
+            link.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // ============ 监听学生选择变化 ============
+        document.getElementById('studentSelect').addEventListener('change', updateAll);
+
+        // ============ 初始化：加载示例数据 ============
+        window.addEventListener('DOMContentLoaded', () => {
+            loadSampleData();
+        });
+    </script>
+</body>
+</html>
